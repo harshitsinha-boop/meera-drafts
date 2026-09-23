@@ -2,17 +2,18 @@ import { after } from "next/server";
 import mammoth from "mammoth";
 import {
   insertNote, insertNotes, updateNoteText, allNotes, allDrafts, getDraft, updateDraft,
-  getFacts, addFact, updateFact,
+  getFacts, addFact, updateFact, getOwnerId, claimOwner,
 } from "./db";
 import { triage, draftFromNotes } from "./pipeline";
 import { triggerDraft } from "./trigger";
-import { tg, send, ownerId, downloadFile, flattenText, type TgUpdate, type TgMessage } from "./telegram";
+import { tg, send, downloadFile, flattenText, type TgUpdate, type TgMessage } from "./telegram";
 
-const HELP = `I turn the notes you drop into your channel into LinkedIn drafts. Nothing is ever posted for you.
+const HELP = `Send me an idea, an observation or a fact and I'll turn it into a LinkedIn post in your voice. Nothing is ever posted for you.
 
 Capturing
-- Post in your channel as usual. I pick up every message.
-- Or message me here. Anything you send me is saved as a note.
+- Message me here: I draft it straight away.
+- /note <text> saves a note without drafting.
+- Post in your channel as usual. I pick up every message for the scheduled drafts.
 
 Drafting (automatic Mon, Wed, Fri at 7am)
 /draft - pick the strongest note(s) and draft now (add a number, up to 3)
@@ -33,7 +34,7 @@ Send me your Telegram export (result.json) or old drafts (.docx, .txt, .md) as f
 const text = (m: TgMessage) => (m.text ?? m.caption ?? "").trim();
 
 export async function handleUpdate(update: TgUpdate, base: string) {
-  const owner = ownerId();
+  let owner = await getOwnerId();
   const channelId = process.env.TELEGRAM_CHANNEL_ID;
 
   // Notes posted in Meera's channel
@@ -52,15 +53,11 @@ export async function handleUpdate(update: TgUpdate, base: string) {
   if (!m || m.chat.type !== "private") return;
   const chat = m.chat.id;
 
-  if (m.from?.id !== owner) {
-    await send(
-      chat,
-      owner
-        ? "This bot is private."
-        : `Your Telegram user id is ${m.from?.id}.\nSet TELEGRAM_OWNER_ID to this number (in .env.local or Vercel), restart, and send /start again.`,
-    );
-    return;
+  if (owner == null && m.from) {
+    owner = await claimOwner(m.from.id);
+    if (owner === m.from.id) await send(chat, "You're now the owner of this bot. Only you can use it.");
   }
+  if (m.from?.id !== owner) return void (await send(chat, "This bot is private."));
 
   if (m.document) return importFile(chat, m.document);
 
@@ -115,6 +112,13 @@ export async function handleUpdate(update: TgUpdate, base: string) {
       return void (await send(chat, "Added to the fact bank."));
     }
 
+    case "/note": {
+      const note = body.slice(cmd.length).trim();
+      if (!note) return void (await send(chat, "Usage: /note <text> - saves it for the scheduled drafts without drafting now."));
+      const id = await insertNote({ source: "telegram", externalId: `tgdm:${m.message_id}`, text: note, capturedAt: new Date(m.date * 1000) });
+      return void (await send(chat, `Saved as note #${id}.`));
+    }
+
     case "/unfact": {
       const id = Number(args[0]);
       if (!Number.isInteger(id)) return void (await send(chat, "Usage: /unfact 3 (see /facts for numbers)"));
@@ -137,14 +141,16 @@ export async function handleUpdate(update: TgUpdate, base: string) {
     }
   }
 
-  // Anything else is a note. A forward from her channel also reveals the channel id.
+  // Anything else is an idea to draft now. A forward from her channel also reveals the channel id.
   const fwd = m.forward_origin?.chat;
   const externalId =
     fwd && m.forward_origin?.message_id && String(fwd.id) === channelId ? `tgch:${m.forward_origin.message_id}` : `tgdm:${m.message_id}`;
-  const id = await insertNote({ source: "telegram", externalId, text: body, capturedAt: new Date(m.date * 1000) });
-  const lines = [id ? `Saved as note #${id}.` : "Already had that one."];
-  if (fwd && !channelId) lines.push(`That channel's id is ${fwd.id}. Set TELEGRAM_CHANNEL_ID to it so I read the channel directly.`);
-  await send(chat, lines.join("\n"));
+  const noteId = await insertNote({ source: "telegram", externalId, text: body, capturedAt: new Date(m.date * 1000) });
+  if (fwd && !channelId) await send(chat, `That channel's id is ${fwd.id}. Set TELEGRAM_CHANNEL_ID to it so I read the channel directly.`);
+  if (!noteId) return void (await send(chat, "I already have that one."));
+  const draftId = await draftFromNotes([noteId]);
+  await triggerDraft(base, draftId);
+  await send(chat, `Got it. Writing a LinkedIn post from this (draft #${draftId}). It usually takes 1-3 minutes.`);
 }
 
 async function handleButton(cb: NonNullable<TgUpdate["callback_query"]>, base: string, owner: number | null) {

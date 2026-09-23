@@ -26,11 +26,18 @@ if (info.result?.url) {
 console.log(`Polling Telegram, forwarding to ${target}. Message your bot now. Ctrl+C to stop.`);
 let offset = 0;
 for (;;) {
-  const res = await api("getUpdates", {
-    offset,
-    timeout: 30,
-    allowed_updates: ["message", "channel_post", "edited_channel_post", "callback_query"],
-  });
+  let res;
+  try {
+    res = await api("getUpdates", {
+      offset,
+      timeout: 30,
+      allowed_updates: ["message", "channel_post", "edited_channel_post", "callback_query"],
+    });
+  } catch (e) {
+    console.error(`Network error reaching Telegram (${e.cause?.code ?? e.message}), retrying...`);
+    await new Promise((r) => setTimeout(r, 3000));
+    continue;
+  }
   if (!res.ok) {
     console.error(res.description);
     await new Promise((r) => setTimeout(r, 3000));

@@ -11,10 +11,6 @@ export async function tg<T = unknown>(method: string, body: Record<string, unkno
   return json.result;
 }
 
-export function ownerId() {
-  const id = process.env.TELEGRAM_OWNER_ID;
-  return id ? Number(id) : null;
-}
 
 export async function send(chatId: number, text: string, extra: Record<string, unknown> = {}) {
   return tg<{ message_id: number }>("sendMessage", {
@@ -26,7 +22,8 @@ export async function send(chatId: number, text: string, extra: Record<string, u
 }
 
 export async function notifyOwner(text: string, extra: Record<string, unknown> = {}) {
-  const id = ownerId();
+  const { getOwnerId } = await import("./db");
+  const id = await getOwnerId();
   if (!id || !process.env.TELEGRAM_BOT_TOKEN) return null;
   return send(id, text, extra);
 }

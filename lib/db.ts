@@ -211,3 +211,23 @@ export async function updateDraft(id: number, patch: Partial<Draft>, onlyFrom?: 
     return true;
   });
 }
+
+// ---------------------------------------------------------------- owner
+
+// TELEGRAM_OWNER_ID wins if set. Otherwise the first person to message the bot
+// claims it, and everyone after that is turned away.
+type Setting = { id: number; owner_id: number | null };
+
+export async function getOwnerId(): Promise<number | null> {
+  if (process.env.TELEGRAM_OWNER_ID) return Number(process.env.TELEGRAM_OWNER_ID);
+  return (await read<Setting>("settings")).items[0]?.owner_id ?? null;
+}
+
+export async function claimOwner(userId: number): Promise<number> {
+  if (process.env.TELEGRAM_OWNER_ID) return Number(process.env.TELEGRAM_OWNER_ID);
+  return mutate<Setting, number>("settings", (c) => {
+    if (!c.items[0]) c.items.push({ id: 1, owner_id: userId });
+    else if (c.items[0].owner_id == null) c.items[0].owner_id = userId;
+    return c.items[0].owner_id!;
+  });
+}
