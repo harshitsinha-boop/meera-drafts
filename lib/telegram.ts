@@ -21,29 +21,6 @@ export async function send(chatId: number, text: string, extra: Record<string, u
   });
 }
 
-export async function notifyOwner(text: string, extra: Record<string, unknown> = {}) {
-  const { getOwnerId } = await import("./db");
-  const id = await getOwnerId();
-  if (!id || !process.env.TELEGRAM_BOT_TOKEN) return null;
-  return send(id, text, extra);
-}
-
-// Files sent to the bot (Telegram export JSON, .docx drafts). Bot API limit is 20 MB.
-export async function downloadFile(fileId: string) {
-  const file = await tg<{ file_path: string }>("getFile", { file_id: fileId });
-  const res = await fetch(`https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`);
-  if (!res.ok) throw new Error(`Could not download file: HTTP ${res.status}`);
-  return Buffer.from(await res.arrayBuffer());
-}
-
-// Telegram delivers text either as a string or, in exports, as an array of
-// plain strings and entity objects ({ type, text }).
-export function flattenText(t: unknown): string {
-  if (typeof t === "string") return t;
-  if (Array.isArray(t)) return t.map((p) => (typeof p === "string" ? p : (p as { text?: string }).text ?? "")).join("");
-  return "";
-}
-
 export type TgMessage = {
   message_id: number;
   date: number;

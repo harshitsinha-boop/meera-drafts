@@ -6,9 +6,3 @@ export function safeEqual(a: string | null | undefined, b: string | null | undef
   const bb = Buffer.from(b);
   return ab.length === bb.length && timingSafeEqual(ab, bb);
 }
-
-// Vercel Cron and the internal draft trigger authenticate with CRON_SECRET.
-export function isInternal(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  return !!secret && safeEqual(req.headers.get("authorization"), `Bearer ${secret}`);
-}

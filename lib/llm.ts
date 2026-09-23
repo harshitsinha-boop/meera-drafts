@@ -109,3 +109,13 @@ export async function pageText(url: string) {
     return null;
   }
 }
+
+export async function generateText(step: string, opts: { system: string; prompt: string }) {
+  const res = await gemini().models.generateContent({
+    model: MODEL,
+    contents: opts.prompt,
+    config: { systemInstruction: opts.system, thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH } },
+  });
+  assertFinished(res, step);
+  return res.text!.trim();
+}
