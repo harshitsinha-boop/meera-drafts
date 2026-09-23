@@ -1,3 +1,5 @@
+import { Composer } from "@/components/Composer";
+
 async function botUsername() {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) return null;
@@ -16,9 +18,14 @@ export default async function Home() {
     <main>
       <h1>Idea in. LinkedIn post out.</h1>
       <p className="lede">
-        Send the bot a sentence or two about an idea. It sends back a LinkedIn post in Meera&apos;s voice, ready to copy and paste.
+        Write a sentence or two about an idea. You get back a LinkedIn post in Meera&apos;s voice, ready to copy and paste.
       </p>
-      {username && <a className="cta" href={`https://t.me/${username}`}>Open @{username} in Telegram</a>}
+      <Composer needsPasscode={!!process.env.APP_PASSCODE} />
+      {username && (
+        <p className="alt">
+          Or send the idea to <a href={`https://t.me/${username}`}>@{username}</a> on Telegram.
+        </p>
+      )}
     </main>
   );
 }
